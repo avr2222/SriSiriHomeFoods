@@ -1,0 +1,17 @@
+{
+  "name": "sri-siri-home-foods",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:customer": "npm run dev -w @sri/customer",
+    "dev:owner": "npm run dev -w @sri/owner",
+    "build:customer": "npm run build -w @sri/customer",
+    "build:owner": "npm run build -w @sri/owner",
+    "build": "npm run build:customer && npm run build:owner"
+  }
+}

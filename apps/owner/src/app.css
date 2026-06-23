@@ -1,0 +1,12 @@
+/* Owner app shell — a real full-screen admin app (no fake desktop window). */
+.app-stage { height: 100vh; height: 100dvh; overflow: hidden; background: var(--cream); }
+.app-stage .desktop {
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.auth-loading { height: 100dvh; display: flex; align-items: center; justify-content: center; color: var(--ink-faint); font-family: var(--sans); }

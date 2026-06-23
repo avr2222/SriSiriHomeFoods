@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sri Siri Owner</string>
+    <string name="title_activity_main">Sri Siri Owner</string>
+    <string name="package_name">com.srisirihomefoods.owner</string>
+    <string name="custom_url_scheme">com.srisirihomefoods.owner</string>
+</resources>
