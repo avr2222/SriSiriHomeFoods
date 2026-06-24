@@ -1,18 +1,55 @@
-/* Customer app shell — full-screen mobile web app / PWA (no phone mockup). */
+/* Customer app shell — full-screen mobile app; real storefront on desktop. */
 .appshell {
   position: relative;
   height: 100vh;
   height: 100dvh;
-  max-width: 520px;          /* keep a comfortable column on wide screens */
-  margin: 0 auto;
+  width: 100%;
   background: var(--cream);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* content scrolls; bottom nav stays pinned */
 .appshell .app-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding-top: env(safe-area-inset-top, 0); }
-.appshell .app-scroll::-webkit-scrollbar { width: 0; }
+.appshell .app-scroll::-webkit-scrollbar { width: 9px; }
+.appshell .app-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,.14); border-radius: 9px; }
+
+/* content width per screen (no effect on phones — viewport is narrower) */
+.screen { width: 100%; margin: 0 auto; }
+.screen.wide { max-width: 1120px; }
+.screen.narrow { max-width: 600px; }
+
+/* responsive product grid (Shop) */
+.cat-grid { display: grid; gap: 13px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+/* desktop top navigation — hidden on mobile (bottom tabs used instead) */
+.topnav { display: none; }
+
+@media (min-width: 900px) {
+  .appshell { background: var(--desk); }
+  .appshell .app-scroll { background: var(--cream); }
+  .topnav {
+    display: flex; align-items: center; gap: 18px;
+    flex: 0 0 auto; padding: 12px 28px; background: var(--paper);
+    border-bottom: 1px solid var(--rule); position: sticky; top: 0; z-index: 20;
+  }
+  .topnav .tn-brand { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .topnav .tn-brand .logo { width: 32px; height: 32px; border-radius: 9px; background: var(--saffron); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .topnav .tn-brand b { font-size: 15px; letter-spacing: -.01em; }
+  .topnav .tn-links { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .topnav .tn-link { padding: 8px 14px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--ink-soft); }
+  .topnav .tn-link:hover { background: var(--cream-2); }
+  .topnav .tn-link.active { color: var(--saffron); background: var(--saffron-soft); }
+  .topnav .tn-cart { position: relative; margin-left: 6px; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); }
+  .topnav .tn-cart:hover { background: var(--cream-2); }
+  .topnav .tn-badge { position: absolute; top: 2px; right: 2px; background: var(--maroon); color: #fff; font-size: 9.5px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+
+  /* desktop uses the top nav, so hide the bottom tab bar */
+  .appshell .bottomnav { display: none; }
+
+  /* comfortable page padding on wide screens */
+  .screen.wide { padding: 8px 10px 32px; }
+  .screen.narrow { padding: 8px 0 32px; }
+}
 
 .auth-loading { height: 100dvh; display: flex; align-items: center; justify-content: center; color: var(--ink-faint); font-family: var(--sans); }

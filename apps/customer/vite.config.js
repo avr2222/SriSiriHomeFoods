@@ -28,6 +28,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: base + 'index.html',
+        // don't let the root (customer) SW hijack the owner sub-app's routes
+        navigateFallbackDenylist: [new RegExp('^' + base + 'owner')],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/rest/') || url.host.includes('supabase'),

@@ -133,7 +133,7 @@ function Shop({ store, go, initialCat }) {
         <button className={'chip' + (cat === 'all' ? ' active' : '')} onClick={() => setCat('all')}>All</button>
         {store.categories.map(c => <button key={c.id} className={'chip' + (cat === c.id ? ' active' : '')} onClick={() => setCat(c.id)}>{c.name}</button>)}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13, padding: '0 18px 18px' }}>
+      <div className="cat-grid" style={{ padding: '0 18px 18px' }}>
         {list.map(p => (
           <div key={p.id} onClick={() => go('product', p.id)} style={{ cursor: 'pointer' }}>
             <div className="card" style={{ overflow: 'hidden', height: '100%', opacity: p.stockState === 'out' ? .6 : 1 }}>
@@ -563,11 +563,31 @@ function Account({ store, go }) {
   );
 }
 
+/* ---------------- TOP NAV (desktop) ---------------- */
+function TopNav({ view, go, count }) {
+  const links = [['home', 'Home'], ['shop', 'Shop'], ['orders', 'Orders'], ['account', 'Account']];
+  const isActive = (k) => view === k || (k === 'shop' && view === 'product') || (k === 'orders' && view === 'order');
+  return (
+    <div className="topnav">
+      <div className="tn-brand" onClick={() => go('home')}>
+        <div className="logo">S</div><b>Sri Siri Home Foods</b>
+      </div>
+      <div className="tn-links">
+        {links.map(l => <button key={l[0]} className={'tn-link' + (isActive(l[0]) ? ' active' : '')} onClick={() => go(l[0])}>{l[1]}</button>)}
+        <button className="tn-cart" onClick={() => go('cart')} aria-label="Cart">
+          <Icon name="cart" size={20} />
+          {count > 0 ? <span className="tn-badge">{count}</span> : null}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- BOTTOM NAV ---------------- */
 function BottomNav({ view, go, count }) {
   const tabs = [['home', 'Home', 'home'], ['shop', 'Shop', 'shop'], ['cart', 'Cart', 'cart'], ['orders', 'Orders', 'receipt'], ['account', 'You', 'user']];
   return (
-    <div style={{ flex: '0 0 auto', display: 'flex', background: 'var(--paper)', borderTop: '1px solid var(--rule)', padding: '7px 6px 10px' }}>
+    <div className="bottomnav" style={{ flex: '0 0 auto', display: 'flex', background: 'var(--paper)', borderTop: '1px solid var(--rule)', padding: '7px 6px 10px' }}>
       {tabs.map(t => {
         const active = view === t[0] || (t[0] === 'shop' && view === 'product') || (t[0] === 'orders' && view === 'order');
         return (
@@ -602,9 +622,13 @@ export default function CustomerApp({ store }) {
   else if (v === 'account') screen = <Account store={store} go={go} />;
   const count = store.cartCount();
   const showNav = !['product', 'checkout'].includes(v);
+  const wide = ['home', 'shop'].includes(v);
   return (
     <div className="appshell">
-      <div className="app-scroll" ref={scrollRef}>{screen}</div>
+      <TopNav view={v} go={go} count={count} />
+      <div className="app-scroll" ref={scrollRef}>
+        <div className={'screen ' + (wide ? 'wide' : 'narrow')}>{screen}</div>
+      </div>
       {showNav ? <BottomNav view={v} go={go} count={count} /> : null}
       {store.toastMsg ? (
         <div className="toast-wrap"><div className="toast"><Icon name="checkCircle" size={18} className="t-ic" />{store.toastMsg}</div></div>
