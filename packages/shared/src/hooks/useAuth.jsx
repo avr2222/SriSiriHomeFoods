@@ -59,6 +59,11 @@ export function AuthProvider({ children }) {
     return { ok: !error, error };
   }, []);
 
+  const changePassword = useCallback(async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    return { ok: !error, error };
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
@@ -75,6 +80,7 @@ export function AuthProvider({ children }) {
     signUpWithEmail,
     signInWithEmail,
     signInWithGoogle,
+    changePassword,
     signOut,
   };
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

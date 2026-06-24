@@ -104,7 +104,7 @@ export default function POSView({ store }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 7, marginBottom: 12 }}>
-          {['Cash', 'UPI', 'Card'].map(m => <button key={m} onClick={() => setPay(m)} className={'chip' + (pay === m ? ' active' : '')} style={{ flex: 1, justifyContent: 'center' }}>{m}</button>)}
+          {['Cash', 'UPI'].map(m => <button key={m} onClick={() => setPay(m)} className={'chip' + (pay === m ? ' active' : '')} style={{ flex: 1, justifyContent: 'center' }}>{m}</button>)}
         </div>
         {/* totals */}
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, padding: '4px 0' }}>

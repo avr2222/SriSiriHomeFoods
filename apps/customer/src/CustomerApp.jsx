@@ -338,16 +338,19 @@ function Checkout({ store, go }) {
   const [addr, setAddr] = useState(0);
   const [pay, setPay] = useState('UPI');
   const [slot, setSlot] = useState('asap');
+  const [phone, setPhone] = useState(store.user?.phone || '');
   const [placing, setPlacing] = useState(false);
   const addresses = [
     { label: 'Home', text: 'Road 12, Jubilee Hills, Hyderabad 500033' },
     { label: 'Office', text: 'HITEC City, Madhapur, Hyderabad 500081' },
   ];
+  const phoneOk = phone.replace(/\D/g, '').length >= 10;
   async function place() {
     if (!store.user) { store.toast('Please log in to place your order'); go('account'); return; }
+    if (!phoneOk) { store.toast('Add a contact number for delivery'); return; }
     setPlacing(true);
     try {
-      const id = await store.placeOrder(addresses[addr].text, pay, slot);
+      const id = await store.placeOrder(addresses[addr].text, pay, phone);
       go('order', id);
     } catch {
       // toast already shown by store.placeOrder
@@ -373,6 +376,9 @@ function Checkout({ store, go }) {
             </button>
           ))}
           <button className="chip" style={{ marginTop: 2 }}><Icon name="plus" size={14} />Add new address</button>
+        </Block>
+        <Block title="Contact number" icon="phone">
+          <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d]/g, ''))} maxLength={10} placeholder="10-digit mobile for delivery updates" style={{ width: '100%', padding: '11px 13px', border: '1.5px solid ' + (phone && !phoneOk ? 'var(--err)' : 'var(--rule-2)'), borderRadius: 10, fontSize: 14 }} />
         </Block>
         <Block title="When" icon="clock">
           <div style={{ display: 'flex', gap: 9 }}>
@@ -404,7 +410,7 @@ function Checkout({ store, go }) {
         </div>
       </div>
       <div style={{ padding: '14px 18px' }}>
-        <button className="btn block" disabled={placing} onClick={place}>{placing ? 'Placing order…' : 'Place order · ' + fmt(t.total)}</button>
+        <button className="btn block" disabled={placing || !phoneOk} onClick={place}>{placing ? 'Placing order…' : 'Place order · ' + fmt(t.total)}</button>
       </div>
     </div>
   );

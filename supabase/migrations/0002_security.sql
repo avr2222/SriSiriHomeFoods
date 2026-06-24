@@ -43,6 +43,7 @@ declare
   v_free_threshold numeric; v_flat numeric;
   it jsonb;
   v_price numeric; v_cost numeric; v_size text; v_pname text;
+  v_pid uuid; v_mto boolean; v_vid uuid; v_pids uuid[] := '{}';
   c record;
 begin
   if auth.uid() is null then raise exception 'not authenticated'; end if;
@@ -72,18 +73,39 @@ begin
   else v_delivery := 0; end if;
 
   insert into orders (customer_id, customer_name, phone, addr, subtotal, discount, delivery_fee, total, status, pay)
-  values (auth.uid(), coalesce(v_name, 'Customer'), v_phone, p->>'addr',
+  values (auth.uid(), coalesce(v_name, 'Customer'), coalesce(nullif(p->>'phone', ''), v_phone), p->>'addr',
           v_subtotal, v_discount, v_delivery, greatest(0, v_subtotal - v_discount) + v_delivery, 'new', p->>'pay')
   returning * into v_order;
 
-  -- order_items snapshot from catalog
+  -- order_items snapshot from catalog + decrement stock for non-MTO variants
   for it in select * from jsonb_array_elements(p->'items') loop
-    select pv.price, pv.cost, pv.size, pr.name into v_price, v_cost, v_size, v_pname
+    select pv.price, pv.cost, pv.size, pr.name, pv.product_id, pv.mto, pv.id
+      into v_price, v_cost, v_size, v_pname, v_pid, v_mto, v_vid
       from product_variants pv join products pr on pr.id = pv.product_id
       where pv.id = (it->>'variant_id')::uuid;
     insert into order_items (order_id, product_name, size, qty, price, cost)
     values (v_order.id, v_pname, v_size, greatest(0, (it->>'qty')::int), v_price, v_cost);
+    if not coalesce(v_mto, false) then
+      update product_variants set stock = greatest(0, stock - greatest(0, (it->>'qty')::int)) where id = v_vid;
+    end if;
+    v_pids := array_append(v_pids, v_pid);
   end loop;
+
+  -- recompute denormalised stock_state for affected products (skip seasonal)
+  update products pr set stock_state = s.state
+  from (
+    select v.product_id,
+      case
+        when bool_or(v.mto) and coalesce(sum(case when v.mto then 0 else v.stock end), 0) = 0 then 'mto'
+        when coalesce(sum(case when v.mto then 0 else v.stock end), 0) = 0 then 'out'
+        when coalesce(sum(case when v.mto then 0 else v.stock end), 0) <= 5 then 'limited'
+        else 'in'
+      end as state
+    from product_variants v
+    where v.product_id = any(v_pids)
+    group by v.product_id
+  ) s
+  where pr.id = s.product_id and pr.stock_state <> 'seasonal';
 
   return v_order;
 end; $$;

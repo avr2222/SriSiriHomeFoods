@@ -10,7 +10,7 @@ import { useAuth } from './useAuth.jsx';
 import { useCart } from '../lib/cart.js';
 import {
   productFromDb, orderFromDb, expenseFromDb, workerFromDb,
-  couponFromDb, deliveryFromDb, customerFromDb,
+  couponFromDb, deliveryFromDb,
 } from './mappers.js';
 
 const EXPENSE_CATS = ['Worker Salary', 'Power Bill', 'Raw Groceries', 'Packaging', 'Gas / Fuel', 'Rent', 'Transport', 'Miscellaneous'];
@@ -103,9 +103,9 @@ export function useStore({ owner = false } = {}) {
   const customersQ = useQuery({
     queryKey: ['customers'], enabled: owner,
     queryFn: async () => {
-      const { data, error } = await supabase.from('customers_summary').select('*').order('spent', { ascending: false });
+      const { data, error } = await supabase.from('customers').select('*').order('name');
       if (error) throw error;
-      return data.map(customerFromDb);
+      return data.map(c => ({ id: c.id, name: c.name, phone: c.phone || '', address: c.address || '', notes: c.notes || '' }));
     },
   });
 
@@ -127,19 +127,26 @@ export function useStore({ owner = false } = {}) {
   const { cart, cartLines, cartCount, cartTotals, cartActions } = useCart({ products, coupons, delivery });
 
   // ---- mutations ----
-  async function placeOrder(addr, pay /*, slot */) {
+  async function placeOrder(addr, pay, phone) {
     const lines = cartLines();
     // Totals are recomputed server-side from product_variants/coupons —
-    // we only send variant ids + quantities (+ coupon code).
+    // we only send variant ids + quantities (+ coupon code + contact phone).
     const payload = {
       addr, pay,
+      phone: phone || '',
       coupon_code: cart.coupon?.code || null,
       items: lines.map(l => ({ variant_id: l.v.id, qty: l.qty })),
     };
     const { data, error } = await supabase.rpc('place_order', { p: payload });
     if (error) { toast('Could not place order'); throw error; }
+    // remember the phone on the customer's profile for next time
+    if (phone && uid && phone !== profile?.phone) {
+      supabase.from('profiles').update({ phone }).eq('id', uid).then(() => {});
+    }
     cartActions.clear();
     qc.invalidateQueries({ queryKey: ['orders'] });
+    qc.invalidateQueries({ queryKey: ['products'] }); // stock decremented server-side
+    qc.invalidateQueries({ queryKey: ['customers'] }); // auto-captured customer
     return '#' + data.order_no;
   }
 
@@ -151,6 +158,7 @@ export function useStore({ owner = false } = {}) {
     const { error } = await supabase.from('orders').update(patch).eq('id', current._uuid);
     if (error) { toast('Update failed'); throw error; }
     qc.invalidateQueries({ queryKey: ['orders'] });
+    if (status === 'cancelled') qc.invalidateQueries({ queryKey: ['products'] }); // stock restored server-side
     toast('Order ' + id + ' → ' + status);
   }
 
@@ -162,6 +170,7 @@ export function useStore({ owner = false } = {}) {
     const { data, error } = await supabase.rpc('counter_sale', { p: payload });
     if (error) { toast('Could not record sale'); throw error; }
     qc.invalidateQueries({ queryKey: ['orders'] });
+    qc.invalidateQueries({ queryKey: ['customers'] }); // auto-captured customer
     return orderFromDb({ ...data, order_items: payload.items.map(i => ({ product_name: i.name, ...i })) }, uid);
   }
 
@@ -248,7 +257,7 @@ export function useStore({ owner = false } = {}) {
   async function addWorker(w) {
     const { error } = await supabase.from('workers').insert({
       name: w.name, role: w.role, salary: +w.salary || 0, advance: +w.advance || 0,
-      join_date: w.join || null, status: w.status || 'Active', attendance: +w.attendance || 100,
+      join_date: w.join || null, status: w.status || 'Active',
     });
     if (error) { toast('Could not add worker'); throw error; }
     qc.invalidateQueries({ queryKey: ['workers'] });
@@ -261,10 +270,36 @@ export function useStore({ owner = false } = {}) {
     if (w.advance != null) patch.advance = +w.advance || 0;
     if (w.join != null) patch.join_date = w.join;
     if (w.status != null) patch.status = w.status;
-    if (w.attendance != null) patch.attendance = +w.attendance || 0;
     const { error } = await supabase.from('workers').update(patch).eq('id', id);
     if (error) { toast('Could not update worker'); throw error; }
     qc.invalidateQueries({ queryKey: ['workers'] });
+  }
+  async function deleteWorkers(ids) {
+    const { error } = await supabase.from('workers').delete().in('id', ids);
+    if (error) { toast('Could not delete workers'); throw error; }
+    qc.invalidateQueries({ queryKey: ['workers'] });
+  }
+
+  // ---- customers (CRUD) ----
+  async function addCustomer(c) {
+    const { error } = await supabase.from('customers').insert({ name: c.name, phone: c.phone || null, address: c.address || null, notes: c.notes || null });
+    if (error) { toast('Could not add customer'); throw error; }
+    qc.invalidateQueries({ queryKey: ['customers'] });
+  }
+  async function updateCustomer(id, c) {
+    const patch = {};
+    if (c.name != null) patch.name = c.name;
+    if (c.phone != null) patch.phone = c.phone || null;
+    if (c.address != null) patch.address = c.address || null;
+    if (c.notes != null) patch.notes = c.notes || null;
+    const { error } = await supabase.from('customers').update(patch).eq('id', id);
+    if (error) { toast('Could not update customer'); throw error; }
+    qc.invalidateQueries({ queryKey: ['customers'] });
+  }
+  async function deleteCustomers(ids) {
+    const { error } = await supabase.from('customers').delete().in('id', ids);
+    if (error) { toast('Could not delete customers'); throw error; }
+    qc.invalidateQueries({ queryKey: ['customers'] });
   }
   async function deleteWorker(id) {
     const { error } = await supabase.from('workers').delete().eq('id', id);
@@ -332,6 +367,23 @@ export function useStore({ owner = false } = {}) {
     qc.invalidateQueries({ queryKey: ['categories'] });
   }
 
+  // ---- bulk deletes ----
+  async function deleteProducts(ids) {
+    const { error } = await supabase.from('products').delete().in('id', ids);
+    if (error) { toast('Could not delete products'); throw error; }
+    qc.invalidateQueries({ queryKey: ['products'] });
+  }
+  async function deleteExpenses(ids) {
+    const { error } = await supabase.from('expenses').delete().in('id', ids);
+    if (error) { toast('Could not delete expenses'); throw error; }
+    qc.invalidateQueries({ queryKey: ['expenses'] });
+  }
+  async function deleteCoupons(codes) {
+    const { error } = await supabase.from('coupons').delete().in('code', codes);
+    if (error) { toast('Could not delete coupons'); throw error; }
+    qc.invalidateQueries({ queryKey: ['coupons'] });
+  }
+
   return {
     // data
     products,
@@ -351,6 +403,8 @@ export function useStore({ owner = false } = {}) {
     addWorker, updateWorker, deleteWorker, recordAdvance,
     addCoupon, updateCoupon, deleteCoupon,
     addCategory, updateCategory, deleteCategory,
+    addCustomer, updateCustomer,
+    deleteProducts, deleteExpenses, deleteCoupons, deleteWorkers, deleteCustomers,
     // misc
     toast, toastMsg,
     user: profile ? { id: uid, name: profile.name, phone: profile.phone } : null,

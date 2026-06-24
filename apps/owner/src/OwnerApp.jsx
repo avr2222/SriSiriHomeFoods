@@ -3,7 +3,7 @@
    ============================================================ */
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, fmt, uploadProductPhoto, toCSV, downloadCSV } from '@sri/shared';
+import { Icon, fmt, uploadProductPhoto, toCSV, downloadCSV, useAuth } from '@sri/shared';
 import POSView from './POSView.jsx';
 
 /* Portal so modals escape any transformed (.fade-in) ancestor, but stay
@@ -17,6 +17,30 @@ function Portal({ children }) {
   }, [el]);
   return createPortal(children, el);
 }
+
+/* multi-select helper for bulk delete */
+function useBulk() {
+  const [sel, setSel] = useState(() => new Set());
+  return {
+    sel,
+    has: (id) => sel.has(id),
+    toggle: (id) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }),
+    set: (ids) => setSel(new Set(ids)),
+    clear: () => setSel(new Set()),
+  };
+}
+function BulkBar({ n, noun, onDelete, onClear }) {
+  if (!n) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 12px', background: 'var(--maroon-soft)', border: '1px solid var(--rule-2)', borderRadius: 10 }}>
+      <span style={{ fontSize: 13, fontWeight: 600 }}>{n} {noun}{n > 1 ? 's' : ''} selected</span>
+      <div style={{ flex: 1 }} />
+      <button className="btn ghost sm" onClick={onClear}>Clear</button>
+      <button className="btn sm" style={{ background: 'var(--maroon)', boxShadow: 'none' }} onClick={onDelete}><Icon name="close" size={14} />Delete selected</button>
+    </div>
+  );
+}
+const cbStyle = { width: 16, height: 16, accentColor: 'var(--saffron)', cursor: 'pointer' };
 
 /* derived numbers — period-aware, computed from real orders/expenses */
 function rangeFor(period) {
@@ -86,6 +110,9 @@ function Dashboard({ store, nav }) {
   const todayIdx = (new Date().getDay() + 6) % 7;
   const expByCat = {};
   m.expensesList.forEach(e => { expByCat[e.cat] = (expByCat[e.cat] || 0) + e.amount; });
+  const prodAgg = {};
+  m.ordersList.forEach(o => o.items.forEach(i => { prodAgg[i.name] = (prodAgg[i.name] || 0) + i.qty; }));
+  const topProducts = Object.entries(prodAgg).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const expEntries = Object.entries(expByCat).sort((a, b) => b[1] - a[1]);
   const expTotal = expEntries.reduce((s, e) => s + e[1], 0);
   const donutColors = ['#c2611f', '#1f5d43', '#8a2a33', '#a8821f', '#9a5a12', '#3a6d2a', '#7a3a8a', '#857c70'];
@@ -96,12 +123,16 @@ function Dashboard({ store, nav }) {
     acc += frac;
     return seg;
   });
+  const preparing = store.orders.filter(o => o.status === 'preparing').length;
+  const lowStock = store.products.filter(p => p.stockState === 'limited' || p.stockState === 'out').length;
+  const recurringDue = store.expenses.filter(e => e.recurring).length;
+  const plural = (n) => (n > 1 ? 's' : '');
   const queue = [
-    { label: m.newCount + ' new orders to accept', tone: 'warn', go: () => nav('orders') },
-    { label: store.orders.filter(o => o.status === 'preparing').length + ' orders being prepared', tone: 'neutral', go: () => nav('orders') },
-    { label: '2 products low on stock', tone: 'warn', go: () => nav('products') },
-    { label: '3 recurring expenses due this week', tone: 'neutral', go: () => nav('expenses') },
-  ];
+    m.newCount ? { label: m.newCount + ' new order' + plural(m.newCount) + ' to accept', tone: 'warn', go: () => nav('orders') } : null,
+    preparing ? { label: preparing + ' order' + plural(preparing) + ' being prepared', tone: 'neutral', go: () => nav('orders') } : null,
+    lowStock ? { label: lowStock + ' product' + plural(lowStock) + ' low on stock', tone: 'warn', go: () => nav('products') } : null,
+    recurringDue ? { label: recurringDue + ' recurring expense' + plural(recurringDue), tone: 'neutral', go: () => nav('expenses') } : null,
+  ].filter(Boolean);
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
@@ -126,6 +157,7 @@ function Dashboard({ store, nav }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <Icon name="bell" size={17} style={{ color: 'var(--saffron)' }} /><b style={{ fontSize: 15 }}>Needs your attention</b>
           </div>
+          {queue.length === 0 ? <div className="empty" style={{ padding: '14px 0' }}>All caught up 🎉</div> : null}
           {queue.map((r, i) => (
             <div key={i} onClick={r.go} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 0', borderBottom: i < queue.length - 1 ? '1px solid var(--rule)' : 'none', cursor: 'pointer' }}>
               <span className={'pill ' + r.tone} style={{ minWidth: 8, height: 8, padding: 0, width: 8, borderRadius: '50%' }} />
@@ -175,18 +207,21 @@ function Dashboard({ store, nav }) {
         {/* top products */}
         <div className="card" style={{ padding: '18px 20px' }}>
           <b style={{ fontSize: 15 }}>Top products</b>
-          <table className="tbl" style={{ marginTop: 10 }}>
-            <tbody>
-              {[['Idli / Dosa Batter', 240, '▲'], ['Idli Podi (Gunpowder)', 178, '▲'], ['Avakaya Mango Pickle', 212, '▲'], ['Boondi Laddu', 201, '—']].map((r, i) => (
-                <tr key={i}>
-                  <td style={{ width: 24, color: 'var(--ink-faint)', fontWeight: 700 }}>{i + 1}</td>
-                  <td style={{ fontWeight: 600 }}>{r[0]}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--ink-faint)' }}>{r[1] + ' sold'}</td>
-                  <td style={{ textAlign: 'right', width: 24, color: r[2] === '▲' ? 'var(--green)' : 'var(--ink-faint)' }}>{r[2]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {topProducts.length === 0 ? (
+            <div className="empty" style={{ padding: '24px 10px' }}>No sales in this period yet.</div>
+          ) : (
+            <table className="tbl" style={{ marginTop: 10 }}>
+              <tbody>
+                {topProducts.map(([name, qty], i) => (
+                  <tr key={name}>
+                    <td style={{ width: 24, color: 'var(--ink-faint)', fontWeight: 700 }}>{i + 1}</td>
+                    <td style={{ fontWeight: 600 }}>{name}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--ink-faint)' }}>{qty + ' sold'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
@@ -199,18 +234,26 @@ function ostatusLabel(s) { return { new: 'New', preparing: 'Preparing', out: 'Ou
 
 function OrdersView({ store }) {
   const [tab, setTab] = useState('new');
+  const [q, setQ] = useState('');
   const tabs = [['new', 'New'], ['preparing', 'Preparing'], ['out', 'Out'], ['delivered', 'Delivered'], ['all', 'All']];
   const counts = {};
   store.orders.forEach(o => counts[o.status] = (counts[o.status] || 0) + 1);
-  const list = tab === 'all' ? store.orders : store.orders.filter(o => o.status === tab);
+  const term = q.trim().toLowerCase();
+  let list = tab === 'all' ? store.orders : store.orders.filter(o => o.status === tab);
+  if (term) list = list.filter(o => (o.customer || '').toLowerCase().includes(term) || (o.phone || '').includes(term) || o.id.toLowerCase().includes(term) || o.items.some(i => i.name.toLowerCase().includes(term)));
   return (
     <div className="fade-in">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         {tabs.map(t => (
           <button key={t[0]} className={'chip' + (tab === t[0] ? ' active' : '')} onClick={() => setTab(t[0])}>
             {t[1]}{counts[t[0]] ? <span style={{ marginLeft: 2, opacity: .7 }}>{counts[t[0]]}</span> : null}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        <div style={{ position: 'relative' }}>
+          <Icon name="search" size={15} style={{ position: 'absolute', left: 10, top: 9, color: 'var(--ink-faint)' }} />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search orders…" style={{ padding: '7px 12px 7px 32px', borderRadius: 9, border: '1.5px solid var(--rule-2)', fontSize: 13, background: 'var(--paper)', width: 220 }} />
+        </div>
       </div>
       {list.length === 0 ? <div className="empty">{'No ' + tab + ' orders.'}</div> : (
         <div style={{ display: 'grid', gap: 11 }}>
@@ -239,14 +282,20 @@ function OrdersView({ store }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 9, alignItems: 'center', borderTop: '1px solid var(--rule)', paddingTop: 11 }}>
-                {o.worker ? (
-                  <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}><Icon name="user" size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />Assigned to <b style={{ color: 'var(--ink)' }}>{o.worker}</b></span>
-                ) : <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Unassigned</span>}
+                {['new', 'preparing', 'out'].includes(o.status) ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-faint)' }}>
+                    <Icon name="user" size={13} />
+                    <select value={o.worker || ''} onChange={e => store.updateOrder(o.id, o.status, e.target.value || null)} style={{ fontSize: 12, padding: '5px 8px', border: '1px solid var(--rule-2)', borderRadius: 8, background: 'var(--paper)' }}>
+                      <option value="">Unassigned</option>
+                      {store.workers.map(w => <option key={w.id} value={w.name}>{w.name}</option>)}
+                    </select>
+                  </span>
+                ) : (o.worker ? <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}><Icon name="user" size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />{o.worker}</span> : <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>—</span>)}
                 <div style={{ flex: 1 }} />
                 {o.status === 'new' ? (
                   <>
                     <button className="btn ghost sm" onClick={() => store.updateOrder(o.id, 'cancelled')}>Reject</button>
-                    <button className="btn sm dark" onClick={() => store.updateOrder(o.id, 'preparing', 'Sunitha')}>Accept & assign</button>
+                    <button className="btn sm dark" onClick={() => store.updateOrder(o.id, 'preparing')}>Accept</button>
                   </>
                 ) : null}
                 {o.status === 'preparing' ? <button className="btn sm" onClick={() => store.updateOrder(o.id, 'out')}>Mark out for delivery</button> : null}
@@ -273,7 +322,11 @@ function ProductsView({ store }) {
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState(null);
   const [cats, setCats] = useState(false);
+  const [restock, setRestock] = useState(null);
+  const bulk = useBulk();
   const list = cat === 'all' ? store.products : store.products.filter(p => p.cat === cat);
+  const allOn = list.length > 0 && list.every(p => bulk.has(p.id));
+  async function delSelected() { if (confirm('Delete ' + bulk.sel.size + ' product(s)?')) { await store.deleteProducts([...bulk.sel]); bulk.clear(); store.toast('Deleted'); } }
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
@@ -283,10 +336,11 @@ function ProductsView({ store }) {
         <button className="btn ghost sm" onClick={() => setCats(true)}><Icon name="grid" size={15} />Manage categories</button>
         <button className="btn sm" onClick={() => setAdd(true)}><Icon name="plus" size={15} />Add product</button>
       </div>
+      <BulkBar n={bulk.sel.size} noun="product" onDelete={delSelected} onClear={bulk.clear} />
       <div className="card" style={{ overflow: 'hidden' }}>
         <table className="tbl">
           <thead>
-            <tr><th>Product</th><th>Category</th><th>Price</th><th>Cost</th><th>Margin</th><th>Stock</th><th></th></tr>
+            <tr><th style={{ width: 28 }}><input type="checkbox" style={cbStyle} checked={allOn} onChange={() => bulk.set(allOn ? [] : list.map(p => p.id))} /></th><th>Product</th><th>Category</th><th>Price</th><th>Cost</th><th>Margin</th><th>Stock</th><th></th></tr>
           </thead>
           <tbody>
             {list.map(p => {
@@ -294,6 +348,7 @@ function ProductsView({ store }) {
               const margin = Math.round((v.price - v.cost) / v.price * 100);
               return (
                 <tr key={p.id}>
+                  <td><input type="checkbox" style={cbStyle} checked={bulk.has(p.id)} onChange={() => bulk.toggle(p.id)} /></td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                       <div style={{ width: 38, height: 38, borderRadius: 9, background: `linear-gradient(150deg,${p.tint},${p.tint}cc)`, flex: '0 0 auto' }} />
@@ -308,7 +363,8 @@ function ProductsView({ store }) {
                   <td style={{ color: 'var(--ink-faint)' }}>{fmt(v.cost)}</td>
                   <td><span style={{ fontWeight: 700, color: margin > 45 ? 'var(--green)' : 'var(--saffron-d)' }}>{margin + '%'}</span></td>
                   <td><OStock p={p} /></td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => setRestock(p)} title="Restock" style={{ color: 'var(--ink-faint)', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, marginRight: 12 }}><Icon name="box" size={16} />Restock</button>
                     <button onClick={() => setEdit(p)} title="Edit product" style={{ color: 'var(--ink-faint)', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600 }}><Icon name="edit" size={16} />Edit</button>
                   </td>
                 </tr>
@@ -320,7 +376,44 @@ function ProductsView({ store }) {
       {add ? <ProductModal store={store} close={() => setAdd(false)} /> : null}
       {edit ? <ProductModal store={store} product={edit} close={() => setEdit(null)} /> : null}
       {cats ? <CategoriesModal store={store} close={() => setCats(false)} /> : null}
+      {restock ? <RestockModal store={store} product={restock} close={() => setRestock(null)} /> : null}
     </div>
+  );
+}
+
+function RestockModal({ store, close, product }) {
+  const [adds, setAdds] = useState(() => product.variants.map(() => ''));
+  const set = (i, val) => setAdds(a => a.map((x, j) => (j === i ? val.replace(/[^\d]/g, '') : x)));
+  const any = adds.some(a => +a > 0);
+  async function save() {
+    const variants = product.variants.map((v, i) => ({ ...v, stock: (+v.stock || 0) + (+adds[i] || 0) }));
+    try { await store.updateProduct(product.id, { variants }); store.toast('Stock updated · ' + product.name); close(); }
+    catch { /* toast shown by store */ }
+  }
+  return (
+    <Portal>
+      <div className="dscrim" onClick={close}>
+        <div className="dmodal" style={{ width: 'min(480px,100%)' }} onClick={e => e.stopPropagation()}>
+          <div className="dm-head"><h3>Restock · {product.name}</h3><button onClick={close}><Icon name="close" size={20} /></button></div>
+          <div className="dm-body">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px', gap: 8, fontSize: 10, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 6 }}>
+              <span>Size</span><span style={{ textAlign: 'right' }}>In stock</span><span style={{ textAlign: 'right' }}>Add</span>
+            </div>
+            {product.variants.map((v, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{v.size}{v.mto ? <span className="muted" style={{ fontSize: 11 }}> · MTO</span> : null}</span>
+                <span style={{ textAlign: 'right', fontSize: 13, color: 'var(--ink-faint)' }}>{v.mto ? '—' : v.stock}</span>
+                <input value={adds[i]} disabled={v.mto} onChange={e => set(i, e.target.value)} placeholder="0" style={{ ...vinput, textAlign: 'right', opacity: v.mto ? .5 : 1 }} />
+              </div>
+            ))}
+          </div>
+          <div className="dm-foot">
+            <button className="btn ghost" onClick={close}>Cancel</button>
+            <button className="btn" disabled={!any} onClick={save}>Add stock</button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   );
 }
 
@@ -380,7 +473,7 @@ const vinput = { width: '100%', padding: '9px 10px', border: '1.5px solid var(--
 function ProductModal({ store, close, product }) {
   const editing = !!product;
   const [name, setName] = useState(product ? product.name : '');
-  const [cat, setCat] = useState(product ? product.cat : 'pickles');
+  const [cat, setCat] = useState(product ? product.cat : (store.categories[0]?.id || ''));
   const [desc, setDesc] = useState(product ? product.desc : '');
   const [variants, setVariants] = useState(product
     ? product.variants.map(v => ({ size: v.size, price: String(v.price), cost: String(v.cost), stock: String(v.stock || 0), mto: !!v.mto }))
@@ -410,7 +503,18 @@ function ProductModal({ store, close, product }) {
   const setV = (i, key, val) => setVariants(vs => vs.map((v, j) => j === i ? { ...v, [key]: val } : v));
   const addRow = () => setVariants(vs => [...vs, { size: '', price: '', cost: '', stock: '', mto: false }]);
   const removeRow = (i) => setVariants(vs => vs.length > 1 ? vs.filter((_, j) => j !== i) : vs);
-  const valid = name.trim() && variants.every(v => v.size.trim() && v.price);
+  function variantIssue(v) {
+    if (!v.size.trim()) return 'Add a size / unit for every row';
+    if (!(+v.price > 0)) return 'Price must be greater than 0';
+    if (!(+v.cost > 0)) return 'Enter a cost (greater than 0)';
+    if (+v.cost >= +v.price) return 'Cost should be less than the price';
+    if (!v.mto && !(+v.stock >= 0 && v.stock !== '')) return 'Enter stock (or turn on Made-to-order)';
+    return null;
+  }
+  const firstIssue = !name.trim() ? 'Enter a product name'
+    : !cat ? 'Pick a category'
+      : (variants.map(variantIssue).find(Boolean) || null);
+  const valid = !firstIssue;
   return (
     <Portal>
       <div className="dscrim" onClick={close}>
@@ -442,9 +546,15 @@ function ProductModal({ store, close, product }) {
               </div>
             </div>
             <div style={{ fontSize: 11.5, fontWeight: 600, margin: '14px 0 8px' }}>Category</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 16 }}>
-              {categories.map(c => <button key={c.id} className={'chip' + (cat === c.id ? ' active' : '')} onClick={() => setCat(c.id)}>{c.name}</button>)}
-            </div>
+            {categories.length === 0 ? (
+              <div style={{ background: 'var(--saffron-soft)', border: '1px solid var(--rule-2)', borderRadius: 10, padding: '11px 13px', fontSize: 12.5, color: 'var(--saffron-d)', marginBottom: 16 }}>
+                No categories yet. Close this and use <b>Manage categories</b> to add one first — every product needs a category.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 16 }}>
+                {categories.map(c => <button key={c.id} className={'chip' + (cat === c.id ? ' active' : '')} onClick={() => setCat(c.id)}>{c.name}</button>)}
+              </div>
+            )}
             {/* variants editor */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 0 8px' }}>
               <div style={{ fontSize: 11.5, fontWeight: 600 }}>Pack sizes & pricing</div>
@@ -475,6 +585,7 @@ function ProductModal({ store, close, product }) {
               );
             })}
             <button onClick={addRow} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: 'var(--saffron-d)', marginTop: 2 }}><Icon name="plus" size={15} />Add another size</button>
+            {firstIssue ? <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="bell" size={14} />{firstIssue}</div> : null}
           </div>
           <div className="dm-foot">
             {editing ? <button onClick={() => setConfirmDel(true)} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600, color: 'var(--maroon)', marginRight: 'auto' }}><Icon name="close" size={15} />Delete</button> : null}
@@ -510,9 +621,15 @@ function ProductModal({ store, close, product }) {
 function ExpensesView({ store }) {
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState(null);
+  const bulk = useBulk();
+  const allOn = store.expenses.length > 0 && store.expenses.every(e => bulk.has(e.id));
+  async function delSelected() { if (confirm('Delete ' + bulk.sel.size + ' expense(s)?')) { await store.deleteExpenses([...bulk.sel]); bulk.clear(); store.toast('Deleted'); } }
   const total = store.expenses.reduce((s, e) => s + e.amount, 0);
   const byCat = {};
   store.expenses.forEach(e => byCat[e.cat] = (byCat[e.cat] || 0) + e.amount);
+  const biggest = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
+  const recurringList = store.expenses.filter(e => e.recurring);
+  const recurringCats = [...new Set(recurringList.map(e => e.cat))];
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', gap: 14, marginBottom: 18 }}>
@@ -522,26 +639,28 @@ function ExpensesView({ store }) {
         </div>
         <div className="kpi-tile" style={{ flex: 1 }}>
           <div className="lab">Biggest category</div>
-          <div className="val" style={{ fontSize: 20 }}>Worker Salary</div>
-          <div className="delta" style={{ color: 'var(--ink-faint)' }}>{fmt(byCat['Worker Salary'] || 0)}</div>
+          <div className="val" style={{ fontSize: 20 }}>{biggest ? biggest[0] : '—'}</div>
+          <div className="delta" style={{ color: 'var(--ink-faint)' }}>{fmt(biggest ? biggest[1] : 0)}</div>
         </div>
         <div className="kpi-tile" style={{ flex: 1 }}>
-          <div className="lab">Recurring due</div>
-          <div className="val" style={{ fontSize: 20 }}>3 items</div>
-          <div className="delta" style={{ color: 'var(--saffron-d)' }}>Salary · Rent · Power</div>
+          <div className="lab">Recurring</div>
+          <div className="val" style={{ fontSize: 20 }}>{recurringList.length} item{recurringList.length === 1 ? '' : 's'}</div>
+          <div className="delta" style={{ color: 'var(--saffron-d)' }}>{recurringCats.slice(0, 3).join(' · ') || '—'}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'stretch' }}>
           <button className="btn" onClick={() => setOpen(true)} style={{ height: '100%', borderRadius: 13 }}><Icon name="plus" size={17} />Log expense</button>
         </div>
       </div>
+      <BulkBar n={bulk.sel.size} noun="expense" onDelete={delSelected} onClear={bulk.clear} />
       <div className="card" style={{ overflow: 'hidden' }}>
         <table className="tbl">
           <thead>
-            <tr><th>Date</th><th>Category</th><th>Payee</th><th>Note</th><th></th><th style={{ textAlign: 'right' }}>Amount</th><th></th></tr>
+            <tr><th style={{ width: 28 }}><input type="checkbox" style={cbStyle} checked={allOn} onChange={() => bulk.set(allOn ? [] : store.expenses.map(e => e.id))} /></th><th>Date</th><th>Category</th><th>Payee</th><th>Note</th><th></th><th style={{ textAlign: 'right' }}>Amount</th><th></th></tr>
           </thead>
           <tbody>
             {store.expenses.map(e => (
               <tr key={e.id}>
+                <td><input type="checkbox" style={cbStyle} checked={bulk.has(e.id)} onChange={() => bulk.toggle(e.id)} /></td>
                 <td style={{ color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{e.date}</td>
                 <td><span style={{ fontWeight: 600 }}>{e.cat}</span></td>
                 <td style={{ color: 'var(--ink-soft)' }}>{e.payee}</td>
@@ -622,18 +741,22 @@ function WorkersView({ store }) {
   const [add, setAdd] = useState(false);
   const [edit, setEdit] = useState(null);
   const [advance, setAdvance] = useState(null);
+  const bulk = useBulk();
+  async function delSelected() { if (confirm('Delete ' + bulk.sel.size + ' worker(s)?')) { await store.deleteWorkers([...bulk.sel]); bulk.clear(); store.toast('Deleted'); } }
   return (
     <div className="fade-in">
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
         <div style={{ flex: 1 }} />
         <button className="btn sm" onClick={() => setAdd(true)}><Icon name="plus" size={15} />Add worker</button>
       </div>
+      <BulkBar n={bulk.sel.size} noun="worker" onDelete={delSelected} onClear={bulk.clear} />
       {store.workers.length === 0 ? <div className="empty">No workers yet. Add your first one.</div> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
           {store.workers.map(w => (
             <div key={w.id} className="card" style={{ padding: '18px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--green)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 17 }}>{(w.name[0] || '?').toUpperCase()}</div>
+                <input type="checkbox" style={cbStyle} checked={bulk.has(w.id)} onChange={() => bulk.toggle(w.id)} />
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--green)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 }}>{(w.name[0] || '?').toUpperCase()}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{w.name}</div>
                   <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>{w.role}</div>
@@ -646,9 +769,6 @@ function WorkersView({ store }) {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', fontSize: 13 }}>
                 <span className="muted">Advance taken</span><b style={{ color: w.advance ? 'var(--maroon)' : 'var(--ink)' }}>{w.advance ? fmt(w.advance) : '—'}</b>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', fontSize: 13 }}>
-                <span className="muted">Attendance</span><b style={{ color: 'var(--green)' }}>{w.attendance + '%'}</b>
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn sm dark" style={{ flex: 1 }} onClick={() => store.payWorker(w)}>Pay salary</button>
@@ -670,7 +790,6 @@ function WorkerModal({ store, close, worker }) {
   const [name, setName] = useState(worker ? worker.name : '');
   const [role, setRole] = useState(worker ? worker.role : '');
   const [salary, setSalary] = useState(worker ? String(worker.salary) : '');
-  const [attendance, setAttendance] = useState(worker ? String(worker.attendance) : '100');
   const valid = name.trim() && salary;
   return (
     <Portal>
@@ -680,17 +799,14 @@ function WorkerModal({ store, close, worker }) {
           <div className="dm-body">
             <div className="field"><label>Name</label><input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ravi Teja" /></div>
             <div className="field"><label>Role</label><input value={role} onChange={e => setRole(e.target.value)} placeholder="e.g. Kitchen & Delivery" /></div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <div className="field" style={{ flex: 1 }}><label>Monthly salary (₹)</label><input type="number" value={salary} onChange={e => setSalary(e.target.value)} placeholder="0" /></div>
-              <div className="field" style={{ flex: 1 }}><label>Attendance (%)</label><input type="number" value={attendance} onChange={e => setAttendance(e.target.value)} placeholder="100" /></div>
-            </div>
+            <div className="field"><label>Monthly salary (₹)</label><input type="number" value={salary} onChange={e => setSalary(e.target.value)} placeholder="0" /></div>
           </div>
           <div className="dm-foot">
             <button className="btn ghost" onClick={close}>Cancel</button>
             <button className="btn" disabled={!valid} onClick={async () => {
               try {
-                if (editing) { await store.updateWorker(worker.id, { name: name.trim(), role, salary, attendance }); store.toast(name.trim() + ' updated'); }
-                else { await store.addWorker({ name: name.trim(), role, salary, attendance }); store.toast(name.trim() + ' added'); }
+                if (editing) { await store.updateWorker(worker.id, { name: name.trim(), role, salary }); store.toast(name.trim() + ' updated'); }
+                else { await store.addWorker({ name: name.trim(), role, salary }); store.toast(name.trim() + ' added'); }
                 close();
               } catch { /* toast shown by store */ }
             }}>{editing ? 'Save changes' : 'Add worker'}</button>
@@ -729,34 +845,100 @@ function AdvanceModal({ store, close, worker }) {
 }
 
 /* ---------------- CUSTOMERS ---------------- */
+const normPhone = (p) => (p || '').replace(/\D/g, '').slice(-10);
+function customerStats(orders, phone) {
+  const key = normPhone(phone);
+  if (!key) return { orders: 0, spent: 0, last: '—', seg: 'New' };
+  const os = orders.filter(o => normPhone(o.phone) === key);
+  const spent = os.reduce((s, o) => s + o.total, 0);
+  const last = os.length ? os.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0].time : '—';
+  const seg = spent >= 6000 ? 'High-value' : (os.length <= 1 ? 'New' : 'Repeat');
+  return { orders: os.length, spent, last, seg };
+}
+
 function CustomersView({ store }) {
+  const [add, setAdd] = useState(false);
+  const [edit, setEdit] = useState(null);
+  const bulk = useBulk();
+  const allOn = store.customers.length > 0 && store.customers.every(c => bulk.has(c.id));
+  async function delSelected() { if (confirm('Delete ' + bulk.sel.size + ' customer(s)?')) { await store.deleteCustomers([...bulk.sel]); bulk.clear(); store.toast('Deleted'); } }
   return (
     <div className="fade-in">
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <table className="tbl">
-          <thead>
-            <tr><th>Customer</th><th>Phone</th><th>Orders</th><th>Total spent</th><th>Last order</th><th>Segment</th></tr>
-          </thead>
-          <tbody>
-            {store.customers.map(c => (
-              <tr key={c.id}>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--maroon)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>{c.name[0]}</div>
-                    <b>{c.name}</b>
-                  </div>
-                </td>
-                <td style={{ color: 'var(--ink-faint)' }}>{c.phone}</td>
-                <td>{c.orders}</td>
-                <td style={{ fontWeight: 700 }}>{fmt(c.spent)}</td>
-                <td style={{ color: 'var(--ink-faint)' }}>{c.last}</td>
-                <td><span className={'pill ' + (c.seg === 'High-value' ? 'solid-g' : c.seg === 'Lapsed' ? 'err' : c.seg === 'New' ? 'warn' : 'neutral')}>{c.seg}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ flex: 1 }} />
+        <button className="btn sm" onClick={() => setAdd(true)}><Icon name="plus" size={15} />Add customer</button>
       </div>
+      <BulkBar n={bulk.sel.size} noun="customer" onDelete={delSelected} onClear={bulk.clear} />
+      {store.customers.length === 0 ? <div className="empty">No customers yet. Add one, or they'll appear here as you record their orders.</div> : (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <table className="tbl">
+            <thead>
+              <tr><th style={{ width: 28 }}><input type="checkbox" style={cbStyle} checked={allOn} onChange={() => bulk.set(allOn ? [] : store.customers.map(c => c.id))} /></th><th>Customer</th><th>Phone</th><th>Orders</th><th>Total spent</th><th>Last order</th><th>Segment</th><th></th></tr>
+            </thead>
+            <tbody>
+              {store.customers.map(c => {
+                const st = customerStats(store.orders, c.phone);
+                return (
+                  <tr key={c.id}>
+                    <td><input type="checkbox" style={cbStyle} checked={bulk.has(c.id)} onChange={() => bulk.toggle(c.id)} /></td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--maroon)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>{(c.name[0] || '?').toUpperCase()}</div>
+                        <b>{c.name}</b>
+                      </div>
+                    </td>
+                    <td style={{ color: 'var(--ink-faint)' }}>{c.phone || '—'}</td>
+                    <td>{st.orders}</td>
+                    <td style={{ fontWeight: 700 }}>{fmt(st.spent)}</td>
+                    <td style={{ color: 'var(--ink-faint)' }}>{st.last}</td>
+                    <td><span className={'pill ' + (st.seg === 'High-value' ? 'solid-g' : st.seg === 'New' ? 'warn' : 'neutral')}>{st.seg}</span></td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => setEdit(c)} title="Edit" style={{ color: 'var(--ink-faint)', marginRight: 10 }}><Icon name="edit" size={15} /></button>
+                      <button onClick={() => { if (confirm('Delete ' + c.name + '?')) store.deleteCustomers([c.id]); }} title="Delete" style={{ color: 'var(--maroon)' }}><Icon name="close" size={15} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {add ? <CustomerModal store={store} close={() => setAdd(false)} /> : null}
+      {edit ? <CustomerModal store={store} customer={edit} close={() => setEdit(null)} /> : null}
     </div>
+  );
+}
+
+function CustomerModal({ store, close, customer }) {
+  const editing = !!customer;
+  const [name, setName] = useState(customer ? customer.name : '');
+  const [phone, setPhone] = useState(customer ? customer.phone : '');
+  const [address, setAddress] = useState(customer ? customer.address : '');
+  const [notes, setNotes] = useState(customer ? customer.notes : '');
+  return (
+    <Portal>
+      <div className="dscrim" onClick={close}>
+        <div className="dmodal" onClick={e => e.stopPropagation()}>
+          <div className="dm-head"><h3>{editing ? 'Edit customer' : 'Add a customer'}</h3><button onClick={close}><Icon name="close" size={20} /></button></div>
+          <div className="dm-body">
+            <div className="field"><label>Name</label><input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Priya Sharma" /></div>
+            <div className="field"><label>Phone</label><input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98480 12345" /></div>
+            <div className="field"><label>Address</label><input value={address} onChange={e => setAddress(e.target.value)} placeholder="Optional" /></div>
+            <div className="field"><label>Notes</label><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" /></div>
+          </div>
+          <div className="dm-foot">
+            <button className="btn ghost" onClick={close}>Cancel</button>
+            <button className="btn" disabled={!name.trim()} onClick={async () => {
+              try {
+                if (editing) { await store.updateCustomer(customer.id, { name: name.trim(), phone, address, notes }); store.toast('Customer updated'); }
+                else { await store.addCustomer({ name: name.trim(), phone, address, notes }); store.toast(name.trim() + ' added'); }
+                close();
+              } catch { /* toast shown by store */ }
+            }}>{editing ? 'Save changes' : 'Add customer'}</button>
+          </div>
+        </div>
+      </div>
+    </Portal>
   );
 }
 
@@ -766,6 +948,8 @@ function DeliveryView({ store }) {
   const [chg, setChg] = useState(store.delivery.flatCharge);
   const [addC, setAddC] = useState(false);
   const [editC, setEditC] = useState(null);
+  const bulk = useBulk();
+  async function delSelectedCoupons() { if (confirm('Delete ' + bulk.sel.size + ' coupon(s)?')) { await store.deleteCoupons([...bulk.sel]); bulk.clear(); store.toast('Deleted'); } }
   return (
     <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
       <div className="card" style={{ padding: '22px 24px' }}>
@@ -794,9 +978,11 @@ function DeliveryView({ store }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
           <Icon name="tag" size={18} style={{ color: 'var(--saffron)' }} /><b style={{ fontSize: 16 }}>Coupons & offers</b>
         </div>
+        <BulkBar n={bulk.sel.size} noun="coupon" onDelete={delSelectedCoupons} onClear={bulk.clear} />
         {store.coupons.length === 0 ? <div className="empty" style={{ padding: '20px 0' }}>No coupons yet.</div> : null}
         {store.coupons.map(c => (
           <div key={c.code} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--rule)' }}>
+            <input type="checkbox" style={cbStyle} checked={bulk.has(c.code)} onChange={() => bulk.toggle(c.code)} />
             <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--saffron-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="tag" size={18} style={{ color: 'var(--saffron)' }} /></div>
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: 'var(--mono)', fontWeight: 600, fontSize: 13 }}>{c.code}</div>
@@ -937,9 +1123,52 @@ function ReportsView({ store }) {
   );
 }
 
+/* ---------------- SETTINGS ---------------- */
+function SettingsView({ store }) {
+  const { user, profile, changePassword, signOut } = useAuth();
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function savePw() {
+    if (pw.length < 6 || pw !== pw2) { store.toast(pw !== pw2 ? 'Passwords don’t match' : 'At least 6 characters'); return; }
+    setBusy(true);
+    const r = await changePassword(pw);
+    setBusy(false);
+    if (r.ok) { setPw(''); setPw2(''); store.toast('Password updated'); }
+    else store.toast(r.error?.message || 'Could not update password');
+  }
+  return (
+    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 820 }}>
+      <div className="card" style={{ padding: '22px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+          <Icon name="user" size={18} style={{ color: 'var(--saffron)' }} /><b style={{ fontSize: 16 }}>Account</b>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 12, background: 'var(--saffron)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18 }}>{((profile?.name || user?.email || 'A')[0] || 'A').toUpperCase()}</div>
+          <div>
+            <div style={{ fontWeight: 700 }}>{profile?.name || 'Owner'}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-faint)' }}>{user?.email}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-faint)' }}>Role: {profile?.role}</div>
+          </div>
+        </div>
+        <button className="btn ghost block" style={{ marginTop: 12 }} onClick={async () => { await signOut(); }}>Sign out</button>
+      </div>
+      <div className="card" style={{ padding: '22px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+          <Icon name="gear" size={18} style={{ color: 'var(--saffron)' }} /><b style={{ fontSize: 16 }}>Change password</b>
+        </div>
+        <div className="field"><label>New password</label><input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="At least 6 characters" /></div>
+        <div className="field"><label>Confirm new password</label><input type="password" value={pw2} onChange={e => setPw2(e.target.value)} placeholder="Re-enter password" /></div>
+        <button className="btn" disabled={busy || !pw} onClick={savePw}>{busy ? 'Saving…' : 'Update password'}</button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- COCKPIT SHELL ---------------- */
 export default function OwnerApp({ store }) {
   const [view, setView] = useState('dashboard');
+  const { profile } = useAuth();
   const m = metrics(store);
   const navItems = [
     ['dashboard', 'Dashboard', 'home'], ['orders', 'Orders', 'receipt'], ['pos', 'Counter Sale', 'tag'], ['products', 'Products', 'box'],
@@ -957,6 +1186,7 @@ export default function OwnerApp({ store }) {
     workers: ['Workers', 'Salaries, advances & attendance'],
     customers: ['Customers', 'Who buys what'],
     delivery: ['Delivery & Offers', 'Rules, coupons & discounts'],
+    settings: ['Settings', 'Account & preferences'],
   };
   let body;
   if (view === 'dashboard') body = <Dashboard store={store} nav={setView} />;
@@ -968,6 +1198,7 @@ export default function OwnerApp({ store }) {
   else if (view === 'workers') body = <WorkersView store={store} />;
   else if (view === 'customers') body = <CustomersView store={store} />;
   else if (view === 'delivery') body = <DeliveryView store={store} />;
+  else if (view === 'settings') body = <SettingsView store={store} />;
   return (
     <div className="desktop">
       <div className="cockpit">
@@ -981,7 +1212,7 @@ export default function OwnerApp({ store }) {
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          <button className="nav-item" onClick={() => store.toast('Settings (demo)')}><Icon name="gear" size={17} className="ic" />Settings</button>
+          <button className={'nav-item' + (view === 'settings' ? ' active' : '')} onClick={() => setView('settings')}><Icon name="gear" size={17} className="ic" />Settings</button>
         </div>
         <div className="cockpit-main">
           <div className="cm-top">
@@ -993,7 +1224,7 @@ export default function OwnerApp({ store }) {
               <Icon name="bell" size={20} style={{ color: 'var(--ink-soft)' }} />
               {m.newCount ? <span style={{ position: 'absolute', top: -4, right: -4, width: 8, height: 8, borderRadius: '50%', background: 'var(--maroon)' }} /> : null}
             </div>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--saffron)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>L</div>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--saffron)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }} title={profile?.email || ''}>{((profile?.name || profile?.email || 'A')[0] || 'A').toUpperCase()}</div>
           </div>
           <div className="cm-body">{body}</div>
         </div>
