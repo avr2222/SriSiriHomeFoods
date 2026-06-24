@@ -248,3 +248,44 @@ input,select,textarea{font-family:inherit;}
 .grid{display:grid;gap:14px;}
 .icon{display:inline-block;vertical-align:middle;}
 .empty{text-align:center;color:var(--ink-faint);padding:40px 20px;font-size:13.5px;}
+
+/* ===================== RESPONSIVE ===================== */
+/* grid utilities (replace inline gridTemplateColumns so they can adapt) */
+.g-kpi{display:grid;gap:14px;grid-template-columns:repeat(4,1fr);}
+.g-3{display:grid;gap:14px;grid-template-columns:repeat(3,1fr);}
+.g-2{display:grid;gap:14px;grid-template-columns:1fr 1fr;}
+.g-2-wide{display:grid;gap:14px;grid-template-columns:1.4fr 1fr;}
+.g-2-rev{display:grid;gap:14px;grid-template-columns:1fr 1.4fr;}
+.g-2-report{display:grid;gap:14px;grid-template-columns:1.2fr 1fr;}
+.g-pos{display:grid;gap:16px;grid-template-columns:1.25fr 380px;align-items:start;}
+
+/* table horizontal scroll on small screens */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+/* hamburger (owner cockpit) — hidden on desktop */
+.cm-burger{display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--rule-2);background:var(--paper);color:var(--ink-soft);flex:0 0 auto;}
+
+/* ---- tablet ---- */
+@media (max-width:900px){
+  .g-kpi{grid-template-columns:repeat(2,1fr);}
+  .g-3{grid-template-columns:repeat(2,1fr);}
+  .g-2,.g-2-wide,.g-2-rev,.g-2-report,.g-pos{grid-template-columns:1fr;}
+
+  /* sidebar becomes an off-canvas drawer */
+  .cockpit{position:relative;}
+  .sidebar{position:absolute;inset:0 auto 0 0;width:248px;z-index:60;transform:translateX(-100%);transition:transform .2s ease;box-shadow:var(--sh-lg);}
+  .sidebar.open{transform:none;}
+  .sb-scrim{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:55;}
+  .cm-burger{display:inline-flex;}
+  .cm-top{padding:12px 16px;flex-wrap:wrap;}
+  .cm-body{padding:18px 16px 40px;}
+}
+
+/* ---- phone ---- */
+@media (max-width:560px){
+  .g-kpi,.g-3{grid-template-columns:1fr;}
+  .tbl{min-width:600px;}            /* scroll inside .tbl-wrap instead of squashing */
+  .cm-top h1{font-size:18px;}
+  .dscrim{padding:0;align-items:flex-end;}   /* modals dock to the bottom like a sheet */
+  .dmodal{width:100%;max-height:92%;border-radius:18px 18px 0 0;}
+}

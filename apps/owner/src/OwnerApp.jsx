@@ -141,7 +141,7 @@ function Dashboard({ store, nav }) {
         </div>
       </div>
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 18 }}>
+      <div className="g-kpi" style={{ marginBottom: 18 }}>
         <Kpi lab="Revenue" val={fmt(m.revenue)} icon="rupee"
           dir={m.revDelta == null ? null : (m.revDelta >= 0 ? 'up' : 'down')}
           delta={m.revDelta == null ? 'No prior ' + period.toLowerCase() : (m.revDelta >= 0 ? '▲ ' : '▼ ') + Math.abs(m.revDelta) + '% vs last ' + period.toLowerCase()} />
@@ -151,7 +151,7 @@ function Dashboard({ store, nav }) {
         <Kpi lab="Net profit" val={fmt(m.net)} icon="trend" dir={m.net >= 0 ? 'up' : 'down'} delta={'Margin ' + m.netMargin + '%'} />
         <Kpi lab="Orders" val={String(m.orders)} icon="receipt" delta={m.newCount + ' awaiting action'} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14, marginBottom: 14 }}>
+      <div className="g-2-wide" style={{ marginBottom: 14 }}>
         {/* action queue */}
         <div className="card" style={{ padding: '18px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -182,7 +182,7 @@ function Dashboard({ store, nav }) {
           </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 14 }}>
+      <div className="g-2-rev">
         {/* expense donut */}
         <div className="card" style={{ padding: '18px 20px' }}>
           <b style={{ fontSize: 15 }}>Where money goes</b>
@@ -337,7 +337,7 @@ function ProductsView({ store }) {
         <button className="btn sm" onClick={() => setAdd(true)}><Icon name="plus" size={15} />Add product</button>
       </div>
       <BulkBar n={bulk.sel.size} noun="product" onDelete={delSelected} onClear={bulk.clear} />
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card tbl-wrap">
         <table className="tbl">
           <thead>
             <tr><th style={{ width: 28 }}><input type="checkbox" style={cbStyle} checked={allOn} onChange={() => bulk.set(allOn ? [] : list.map(p => p.id))} /></th><th>Product</th><th>Category</th><th>Price</th><th>Cost</th><th>Margin</th><th>Stock</th><th></th></tr>
@@ -632,17 +632,17 @@ function ExpensesView({ store }) {
   const recurringCats = [...new Set(recurringList.map(e => e.cat))];
   return (
     <div className="fade-in">
-      <div style={{ display: 'flex', gap: 14, marginBottom: 18 }}>
-        <div className="kpi-tile" style={{ flex: 1 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
+        <div className="kpi-tile" style={{ flex: '1 1 150px' }}>
           <div className="lab">Total this month</div>
           <div className="val">{fmt(total)}</div>
         </div>
-        <div className="kpi-tile" style={{ flex: 1 }}>
+        <div className="kpi-tile" style={{ flex: '1 1 150px' }}>
           <div className="lab">Biggest category</div>
           <div className="val" style={{ fontSize: 20 }}>{biggest ? biggest[0] : '—'}</div>
           <div className="delta" style={{ color: 'var(--ink-faint)' }}>{fmt(biggest ? biggest[1] : 0)}</div>
         </div>
-        <div className="kpi-tile" style={{ flex: 1 }}>
+        <div className="kpi-tile" style={{ flex: '1 1 150px' }}>
           <div className="lab">Recurring</div>
           <div className="val" style={{ fontSize: 20 }}>{recurringList.length} item{recurringList.length === 1 ? '' : 's'}</div>
           <div className="delta" style={{ color: 'var(--saffron-d)' }}>{recurringCats.slice(0, 3).join(' · ') || '—'}</div>
@@ -652,7 +652,7 @@ function ExpensesView({ store }) {
         </div>
       </div>
       <BulkBar n={bulk.sel.size} noun="expense" onDelete={delSelected} onClear={bulk.clear} />
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card tbl-wrap">
         <table className="tbl">
           <thead>
             <tr><th style={{ width: 28 }}><input type="checkbox" style={cbStyle} checked={allOn} onChange={() => bulk.set(allOn ? [] : store.expenses.map(e => e.id))} /></th><th>Date</th><th>Category</th><th>Payee</th><th>Note</th><th></th><th style={{ textAlign: 'right' }}>Amount</th><th></th></tr>
@@ -751,7 +751,7 @@ function WorkersView({ store }) {
       </div>
       <BulkBar n={bulk.sel.size} noun="worker" onDelete={delSelected} onClear={bulk.clear} />
       {store.workers.length === 0 ? <div className="empty">No workers yet. Add your first one.</div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+        <div className="g-3">
           {store.workers.map(w => (
             <div key={w.id} className="card" style={{ padding: '18px 20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
@@ -870,7 +870,7 @@ function CustomersView({ store }) {
       </div>
       <BulkBar n={bulk.sel.size} noun="customer" onDelete={delSelected} onClear={bulk.clear} />
       {store.customers.length === 0 ? <div className="empty">No customers yet. Add one, or they'll appear here as you record their orders.</div> : (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card tbl-wrap">
           <table className="tbl">
             <thead>
               <tr><th style={{ width: 28 }}><input type="checkbox" style={cbStyle} checked={allOn} onChange={() => bulk.set(allOn ? [] : store.customers.map(c => c.id))} /></th><th>Customer</th><th>Phone</th><th>Orders</th><th>Total spent</th><th>Last order</th><th>Segment</th><th></th></tr>
@@ -951,7 +951,7 @@ function DeliveryView({ store }) {
   const bulk = useBulk();
   async function delSelectedCoupons() { if (confirm('Delete ' + bulk.sel.size + ' coupon(s)?')) { await store.deleteCoupons([...bulk.sel]); bulk.clear(); store.toast('Deleted'); } }
   return (
-    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+    <div className="fade-in g-2">
       <div className="card" style={{ padding: '22px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
           <Icon name="truck" size={18} style={{ color: 'var(--saffron)' }} /><b style={{ fontSize: 16 }}>Delivery rules</b>
@@ -1082,7 +1082,7 @@ function ReportsView({ store }) {
     store.toast(name + ' exported');
   }
   return (
-    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14 }}>
+    <div className="fade-in g-2-report">
       <div className="card" style={{ padding: '22px 24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
           <b style={{ fontSize: 16 }}>Profit & Loss</b><span className="pill neutral">This month</span>
@@ -1138,7 +1138,7 @@ function SettingsView({ store }) {
     else store.toast(r.error?.message || 'Could not update password');
   }
   return (
-    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 820 }}>
+    <div className="fade-in g-2" style={{ maxWidth: 820 }}>
       <div className="card" style={{ padding: '22px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
           <Icon name="user" size={18} style={{ color: 'var(--saffron)' }} /><b style={{ fontSize: 16 }}>Account</b>
@@ -1168,8 +1168,10 @@ function SettingsView({ store }) {
 /* ---------------- COCKPIT SHELL ---------------- */
 export default function OwnerApp({ store }) {
   const [view, setView] = useState('dashboard');
+  const [navOpen, setNavOpen] = useState(false);
   const { profile } = useAuth();
   const m = metrics(store);
+  const go = (v) => { setView(v); setNavOpen(false); };
   const navItems = [
     ['dashboard', 'Dashboard', 'home'], ['orders', 'Orders', 'receipt'], ['pos', 'Counter Sale', 'tag'], ['products', 'Products', 'box'],
     ['expenses', 'Expenses', 'wallet'], ['reports', 'Reports & P&L', 'chart'],
@@ -1202,20 +1204,22 @@ export default function OwnerApp({ store }) {
   return (
     <div className="desktop">
       <div className="cockpit">
-        <div className="sidebar">
+        <div className={'sidebar' + (navOpen ? ' open' : '')}>
           <div className="sb-brand"><div className="logo">S</div><b>Sri Siri · Owner</b></div>
           <div className="sb-sec">Operations</div>
           {navItems.map((it, i) => it === null ? <div key={'sec' + i} className="sb-sec">Manage</div> : (
-            <button key={it[0]} className={'nav-item' + (view === it[0] ? ' active' : '')} onClick={() => setView(it[0])}>
+            <button key={it[0]} className={'nav-item' + (view === it[0] ? ' active' : '')} onClick={() => go(it[0])}>
               <Icon name={it[2]} size={17} className="ic" /><span>{it[1]}</span>
               {it[0] === 'orders' && m.newCount ? <span className="badge">{m.newCount}</span> : null}
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          <button className={'nav-item' + (view === 'settings' ? ' active' : '')} onClick={() => setView('settings')}><Icon name="gear" size={17} className="ic" />Settings</button>
+          <button className={'nav-item' + (view === 'settings' ? ' active' : '')} onClick={() => go('settings')}><Icon name="gear" size={17} className="ic" />Settings</button>
         </div>
+        {navOpen ? <div className="sb-scrim" onClick={() => setNavOpen(false)} /> : null}
         <div className="cockpit-main">
           <div className="cm-top">
+            <button className="cm-burger" onClick={() => setNavOpen(true)} aria-label="Menu"><Icon name="grid" size={18} /></button>
             <div style={{ flex: 1 }}>
               <h1>{titles[view][0]}</h1>
               <div className="sub">{titles[view][1]}</div>

@@ -44,7 +44,7 @@ export default function POSView({ store }) {
   if (bill) return <BillReceipt store={store} bill={bill} reset={reset} />;
 
   return (
-    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1.25fr 380px', gap: 16, alignItems: 'start' }}>
+    <div className="fade-in g-pos">
       {/* ---- product picker ---- */}
       <div className="card" style={{ padding: '16px 18px' }}>
         <div style={{ position: 'relative', marginBottom: 14 }}>
